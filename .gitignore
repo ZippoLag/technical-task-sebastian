@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# local-development ignores
+pnpm-workspace.yaml
+pnpm-lock.yaml
+.env

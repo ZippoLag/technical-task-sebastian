@@ -8,6 +8,15 @@ import { LeadsUpdateInput, LeadsUpdateOutput } from '../types/leads/update'
 import { LeadsBulkImportInput, LeadsBulkImportOutput } from '../types/leads/bulkImport'
 import { LeadsVerifyEmailsInput, LeadsVerifyEmailsOutput } from '../types/leads/verifyEmails'
 import { ApiModule, endpoint } from '../utils'
+import { axiosInstance } from '../../utils/axios'
+
+const verifyEmails = async (body: LeadsVerifyEmailsInput): Promise<LeadsVerifyEmailsOutput> => {
+  const response = await axiosInstance.post<LeadsVerifyEmailsOutput>('/leads/verify-emails', body, {
+    timeout: 60_000,
+  })
+
+  return response.data
+}
 
 export const leadsApi = {
   getMany: endpoint<LeadsGetManyOutput, LeadsGetManyInput>('get', '/leads'),
@@ -21,5 +30,5 @@ export const leadsApi = {
     '/leads/generate-messages'
   ),
   bulkImport: endpoint<LeadsBulkImportOutput, LeadsBulkImportInput>('post', '/leads/bulk'),
-  verifyEmails: endpoint<LeadsVerifyEmailsOutput, LeadsVerifyEmailsInput>('post', '/leads/verify-emails'),
+  verifyEmails,
 } as const satisfies ApiModule

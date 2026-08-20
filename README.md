@@ -11,12 +11,14 @@ Welcome to the **TinyEnginy** take‑home! This exercise is a condensed version 
 
 These tasks are independent — tackle them in whatever order you consider most important or impactful.
 
-- **Bug fix:** CSV import displays invalid country codes.
-- **Bug fix:** Email verification hangs indefinitely with no feedback.
-- **Feature:** Add new lead data fields (phone number, years at company, LinkedIn).
-- **Feature:** Implement an enrich phone workflow using Temporal.
-- **PR Review:** Review an open pull request from a teammate.
-- **Analysis:** Propose codebase improvements and a technical roadmap.
+[x] **Bug fix:** CSV import displays invalid country codes.
+  > TODO: verify reproduction criteria
+[X] **Bug fix:** Email verification hangs indefinitely with no feedback.
+  > Note: expanded into concurrency handling for enrichment
+[ ] **Feature:** Add new lead data fields (phone number, years at company, LinkedIn).
+[ ] **Feature:** Implement an enrich phone workflow using Temporal.
+[ ] **PR Review:** Review an open pull request from a teammate.
+[ ] **Analysis:** Propose codebase improvements and a technical roadmap.
 
 ## Submission
 

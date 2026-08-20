@@ -9,6 +9,8 @@ interface MessageTemplateModalProps {
   onClose: () => void
   selectedLeadIds: number[]
   selectedLeadsCount: number
+  onOperationStart?: () => void
+  onOperationSettled?: () => void
 }
 
 export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
@@ -16,6 +18,8 @@ export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
   onClose,
   selectedLeadIds,
   selectedLeadsCount,
+  onOperationStart,
+  onOperationSettled,
 }) => {
   const [template, setTemplate] = useState('')
   const [generationResult, setGenerationResult] = useState<{
@@ -50,11 +54,14 @@ export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
           result.errors.length === 1
             ? `${result.errors.length} lead had errors`
             : `${result.errors.length} leads had errors`
-        toast.success(`${successMessage}, but ${errorMessage}. Check details below.`)
+        toast.error(`${successMessage}, but ${errorMessage}. Check details below.`)
       }
     },
     onError: () => {
       toast.error('Failed to generate messages. Please try again.')
+    },
+    onSettled: () => {
+      onOperationSettled?.()
     },
   })
 
@@ -62,6 +69,7 @@ export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
     e.preventDefault()
     if (template.trim() && selectedLeadIds.length > 0) {
       setGenerationResult(null)
+      onOperationStart?.()
 
       generateMessagesMutation.mutate({
         leadIds: selectedLeadIds,

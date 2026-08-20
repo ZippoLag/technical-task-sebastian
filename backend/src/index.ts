@@ -4,6 +4,8 @@ import { Connection, Client } from '@temporalio/client'
 import { verifyEmailWorkflow } from './workflows'
 import { generateMessageFromTemplate } from './utils/messageGenerator'
 import { runTemporalWorker } from './worker'
+import { EMAIL_VERIFICATION_CONFIG } from './config'
+import { mapWithConcurrency } from './utils/concurrency'
 const prisma = new PrismaClient()
 const app = express()
 app.use(express.json())
@@ -273,40 +275,55 @@ app.post('/leads/verify-emails', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'No leads found with the provided IDs' })
     }
 
-    const connection = await Connection.connect({ address: 'localhost:7233' })
-    const client = new Client({ connection, namespace: 'default' })
+    const connection = await Connection.connect({
+      address: 'localhost:7233',
+      connectTimeout: EMAIL_VERIFICATION_CONFIG.connectionTimeout,
+    })
 
-    let verifiedCount = 0
-    const results: Array<{ leadId: number; emailVerified: boolean }> = []
-    const errors: Array<{ leadId: number; leadName: string; error: string }> = []
+    try {
+      const client = new Client({ connection, namespace: 'default' })
+      const outcomes = await mapWithConcurrency(leads, EMAIL_VERIFICATION_CONFIG.concurrency, async (lead) => {
+        try {
+          const isVerified = await client.workflow.execute(verifyEmailWorkflow, {
+            taskQueue: 'myQueue',
+            workflowId: `verify-email-${lead.id}-${Date.now()}`,
+            workflowExecutionTimeout: EMAIL_VERIFICATION_CONFIG.workflowTimeout,
+            args: [lead.email],
+          })
 
-    for (const lead of leads) {
-      try {
-        const isVerified = await client.workflow.execute(verifyEmailWorkflow, {
-          taskQueue: 'myQueue',
-          workflowId: `verify-email-${lead.id}-${Date.now()}`,
-          args: [lead.email],
-        })
+          await prisma.lead.update({
+            where: { id: lead.id },
+            data: { emailVerified: Boolean(isVerified) },
+          })
 
-        await prisma.lead.update({
-          where: { id: lead.id },
-          data: { emailVerified: Boolean(isVerified) },
-        })
+          return {
+            result: { leadId: lead.id, emailVerified: isVerified },
+            error: undefined,
+          }
+        } catch (error) {
+          return {
+            result: undefined,
+            error: {
+              leadId: lead.id,
+              leadName: `${lead.firstName} ${lead.lastName}`.trim(),
+              error: error instanceof Error ? error.message : 'Unknown error',
+            },
+          }
+        }
+      })
 
-        results.push({ leadId: lead.id, emailVerified: isVerified })
-        verifiedCount += 1
-      } catch (error) {
-        errors.push({
-          leadId: lead.id,
-          leadName: `${lead.firstName} ${lead.lastName}`.trim(),
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
-      }
+      const results = outcomes.flatMap((outcome) => (outcome.result ? [outcome.result] : []))
+      const errors = outcomes.flatMap((outcome) => (outcome.error ? [outcome.error] : []))
+
+      res.json({
+        success: errors.length === 0,
+        verifiedCount: results.length,
+        results,
+        errors,
+      })
+    } finally {
+      await connection.close()
     }
-
-    await connection.close()
-
-    res.json({ success: true, verifiedCount, results, errors })
   } catch (error) {
     console.error('Error verifying emails:', error)
     res.status(500).json({ error: 'Failed to verify emails' })

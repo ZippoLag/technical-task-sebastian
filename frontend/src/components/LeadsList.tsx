@@ -4,13 +4,27 @@ import toast from 'react-hot-toast'
 import { api } from '../api'
 import { MessageTemplateModal } from './MessageTemplateModal'
 import { CsvImportModal } from './CsvImportModal'
+import {
+  canInvokeEnrichOption,
+  createPendingEnrichOptions,
+  EnrichOption,
+  PendingEnrichOptions,
+  setEnrichOptionPending as updateEnrichOptionPending,
+} from '../utils/enrichOperationState'
 
 export const LeadsList: FC = () => {
   const [selectedLeads, setSelectedLeads] = useState<number[]>([])
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false)
   const [isEnrichDropdownOpen, setIsEnrichDropdownOpen] = useState(false)
+  const [pendingEnrichOptions, setPendingEnrichOptions] = useState<PendingEnrichOptions>(
+    createPendingEnrichOptions()
+  )
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const queryClient = useQueryClient()
+
+  const setEnrichOptionPending = (option: EnrichOption, pending: boolean) => {
+    setPendingEnrichOptions((current) => updateEnrichOptionPending(current, option, pending))
+  }
 
   const leads = useQuery({
     queryKey: ['leads', 'getMany'],
@@ -39,7 +53,16 @@ export const LeadsList: FC = () => {
     mutationFn: async (ids: number[]) => api.leads.verifyEmails({ leadIds: ids }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['leads', 'getMany'] })
-      setIsEnrichDropdownOpen(false)
+
+      if (data.errors.length > 0) {
+        const verifiedMessage =
+          data.verifiedCount > 0 ? ` Verified ${data.verifiedCount} emails successfully.` : ''
+        toast.error(
+          `${data.errors.length} email${data.errors.length === 1 ? '' : 's'} failed verification.${verifiedMessage}`
+        )
+        return
+      }
+
       toast.success(
         data.verifiedCount === 1
           ? `Verified ${data.verifiedCount} email`
@@ -48,7 +71,10 @@ export const LeadsList: FC = () => {
     },
     onError: () => {
       toast.error('Failed to verify emails. Please try again.')
-    }
+    },
+    onSettled: () => {
+      setEnrichOptionPending('verify', false)
+    },
   })
 
   const handleSelectAll = (checked: boolean) => {
@@ -135,10 +161,12 @@ export const LeadsList: FC = () => {
                   <div className="py-1">
                     <button
                       onClick={() => {
+                        if (!canInvokeEnrichOption(pendingEnrichOptions, 'messages') || isMessageModalOpen) return
                         setIsMessageModalOpen(true)
                         setIsEnrichDropdownOpen(false)
                       }}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                      disabled={pendingEnrichOptions.messages || isMessageModalOpen}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="flex items-center">
                         <svg className="mr-3 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -148,22 +176,32 @@ export const LeadsList: FC = () => {
                       </div>
                     </button>
                     <button
-                      onClick={() => verifyEmailsMutation.mutate(selectedLeads)}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                      onClick={() => {
+                        if (!canInvokeEnrichOption(pendingEnrichOptions, 'verify')) return
+                        setIsEnrichDropdownOpen(false)
+                        setEnrichOptionPending('verify', true)
+                        verifyEmailsMutation.mutate(selectedLeads)
+                      }}
+                      disabled={pendingEnrichOptions.verify || verifyEmailsMutation.isPending}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="flex items-center">
                         <svg className="mr-3 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12H8m8 0a8 8 0 11-16 0 8 8 0 0116 0zm-8 0V4" />
                         </svg>
-                        Verify Email
+                        {pendingEnrichOptions.verify ? 'Verifying...' : 'Verify Email'}
                       </div>
                     </button>
                     <button
                       onClick={() => {
-                        toast.error('Gender guessing feature is not yet implemented')
+                        if (!canInvokeEnrichOption(pendingEnrichOptions, 'gender')) return
                         setIsEnrichDropdownOpen(false)
+                        setEnrichOptionPending('gender', true)
+                        toast.error('Gender guessing feature is not yet implemented')
+                        setEnrichOptionPending('gender', false)
                       }}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                      disabled={pendingEnrichOptions.gender}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="flex items-center">
                         <svg className="mr-3 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -323,6 +361,8 @@ export const LeadsList: FC = () => {
         onClose={() => setIsMessageModalOpen(false)}
         selectedLeadIds={selectedLeads}
         selectedLeadsCount={selectedLeads.length}
+        onOperationStart={() => setEnrichOptionPending('messages', true)}
+        onOperationSettled={() => setEnrichOptionPending('messages', false)}
       />
 
       <CsvImportModal
